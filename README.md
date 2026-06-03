@@ -1,2 +1,2 @@
-# MIPS-PROCESSOR
-32 bits MIPS Processor
+# CS220BucketSort
+Done as part of the Course CS220 In 2025-26 II Sem
