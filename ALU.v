@@ -1,101 +1,102 @@
-`timescale 1ns / 1ps
-`include "function.v"
-
-//////////////////////////////////////////////////////////////////////////////////
-// Company: 
-// Engineer: 
-// 
-// Create Date: 04/09/2025 12:56:04 AM
-// Design Name: 
-// Module Name: ALU
-// Project Name: 
-// Target Devices: 
-// Tool Versions: 
-// Description: 
-// 
-// Dependencies: 
-// 
-// Revision:
-// Revision 0.01 - File Created
-// Additional Comments:
-// 
-//////////////////////////////////////////////////////////////////////////////////
-
-module ALU(
-    input clk,
-    input rst,
-    input  [31:0] A,         // Operand 1 (RS)
-    input  [31:0] B,
-    input  [4:0] ALU_Ctrl, // Operation selector         // Operand 2 (RT/I)
-    input  [4:0] shift,      // Shift amount 
-    input  [63:0] mult_in,  // Needed for multiplications current hi_lo value
-    output reg [31:0] result,
-    output reg [63:0] mult_res, // Output for mul/madd/maddu
-    output reg is_zero,
-    output reg is_negative,
-    output reg is_overflow
+module ALU (
+    input [5:0] opcode,
+    input [5:0] func,
+    input [31:0] src1,
+    input [31:0] src2,
+    input [31:0] pc,
+    input [31:0] branch_offset,
+    input [4:0] rt,
+    output reg [31:0] dest,
+    output reg dest_valid,
+    output reg branch_taken
 );
 
-    reg signed [31:0] A_signed, B_signed;
-    reg [63:0] mult_result;
-
     always @(*) begin
-        A_signed = A;
-        B_signed = B;
-        is_zero = 0;
-        is_negative = 0;
-        is_overflow = 0;
-        hi_lo = 0;
-        result = 0;
+        // Default assignments to prevent latches
+        dest = 32'd0;
+        dest_valid = 1'b0;
+        branch_taken = 1'b0;
 
-        case (ALU_Ctrl)
-            // Arithmetic
-            5'b00000: result = A + B;                             // add/addi
-            5'b00001: result = A - B;                             // sub
-            5'b00010: result = A + B;                             // addu/addiu (unsigned)
-            5'b00011: result = A - B;                             // subu (unsigned)
-            5'b00100: begin                                       // mul
-                mult_result = A * B;
-                mult_res = mult_result;
-                result = mult_result[31:0];                       // lo part
+        case(opcode)
+            6'h00: begin // R-type instructions
+                case(func)
+                    6'h08: begin // jr
+                        branch_taken = 1'b1;
+                        dest_valid = 1'b0;
+                    end
+                    6'h09: begin // jalr
+                        branch_taken = 1'b1;
+                        dest = pc + 1;
+                        dest_valid = 1'b1; // Writes pc+1 to rd (31)
+                    end
+                    6'h2a: begin // slt
+                        dest = ($signed(src1) < $signed(src2)) ? 32'd1 : 32'd0;
+                        dest_valid = 1'b1;
+                    end
+                    6'h2b: begin // sltu
+                        dest = (src1 < src2) ? 32'd1 : 32'd0;
+                        dest_valid = 1'b1;
+                    end
+                    // ... (Include your other R-type ALU cases like ADD, SUB, etc.)
+                endcase
             end
-            5'b00101: begin                                       // madd
-                mult_result = A * B;
-                mult_res = mult_result;
-                result = mult_result[31:0];                            // lo part
+
+            6'h01: begin // bltz or bgez (distinguished by rt)
+                if (rt == 5'd0) begin // bltz
+                    branch_taken = ($signed(src1) < 0) ? 1'b1 : 1'b0;
+                end else if (rt == 5'd1) begin // bgez
+                    branch_taken = ($signed(src1) >= 0) ? 1'b1 : 1'b0;
+                end
+                dest = pc + branch_offset;
+                dest_valid = 1'b0;
             end
-            5'b00110: begin                                       // maddu
-                mult_result = A * B;
-                mult_res = mult_result;
-                result = mult_result[31:0]; 
+
+            6'h02: begin // j
+                branch_taken = 1'b1;
+                dest_valid = 1'b0;
             end
 
-            // Logical
-            5'b01000: result = A & B;                             // and/andi
-            5'b01001: result = A | B;                             // or/ori
-            5'b01010: result = A ^ B;                             // xor/xori
-            5'b01011: result = ~A;                                // not
+            6'h03: begin // jal
+                branch_taken = 1'b1;
+                dest = pc + 1;     // jal saves pc+1 to the $ra register
+                dest_valid = 1'b1;
+            end
 
-            // Shifts
-            5'b01100: result = B << shift;                        // sll
-            5'b01101: result = B >> shift;                        // srl (logical)
-            5'b01110: result = $signed(B) >>> shift;             // sra (arithmetic)
-            5'b01111: result = $signed(B) <<< shift;             // sla (same as sll for signed)
+            6'h04: begin // beq
+                branch_taken = (src1 == src2) ? 1'b1 : 1'b0;
+                dest = pc + branch_offset;
+                dest_valid = 1'b0;
+            end
 
-            // Comparison
-            5'b10000: result = ($signed(A) < $signed(B)) ? 1 : 0; // slt/slti
-            5'b10001: result = (A == B) ? 1 : 0;                  // seq
-            5'b10010: result = ($signed(A) > $signed(B)) ? 1 : 0; // bgt
-            5'b10011: result = ($signed(A) >= $signed(B)) ? 1 : 0;// bgte
-            5'b10100: result = ($signed(A) < $signed(B)) ? 1 : 0; // ble
-            5'b10101: result = ($signed(A) <= $signed(B)) ? 1 : 0;// bleq
-            5'b10110: result = (A < B) ? 1 : 0;                   // bleu (unsigned)
-            5'b10111: result = (A > B) ? 1 : 0;                   // bgtu (unsigned)
+            6'h05: begin // bne
+                branch_taken = (src1 != src2) ? 1'b1 : 1'b0;
+                dest = pc + branch_offset;
+                dest_valid = 1'b0;
+            end
 
-            default: result = 0;
+            6'h06: begin // blez
+                branch_taken = ($signed(src1) <= 0) ? 1'b1 : 1'b0;
+                dest = pc + branch_offset;
+                dest_valid = 1'b0;
+            end
+
+            6'h07: begin // bgtz
+                branch_taken = ($signed(src1) > 0) ? 1'b1 : 1'b0;
+                dest = pc + branch_offset;
+                dest_valid = 1'b0;
+            end
+
+            6'h0A: begin // slti
+                dest = ($signed(src1) < $signed(branch_offset)) ? 32'd1 : 32'd0;
+                dest_valid = 1'b1;
+            end
+
+            6'h0B: begin // sltiu
+                dest = (src1 < branch_offset) ? 32'd1 : 32'd0; 
+                dest_valid = 1'b1;
+            end
+
+            // ... (Include your other I-type operations like ADDI, ORI, etc.)
         endcase
-
-        is_zero = (result == 0);
-        is_negative = result[31];
     end
 endmodule
