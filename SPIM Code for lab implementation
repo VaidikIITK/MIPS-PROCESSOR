@@ -1,0 +1,44 @@
+# Variable Mapping: x = $s0, i = $s1, N = $s2
+        addi $s0, $zero, 10    # x = 10
+        addi $s1, $zero, 0     # i = 0
+        addi $s2, $zero, 30    # N = 30
+
+Loop:
+        slt  $t0, $s1, $s2     # $t0 = (i < N)
+        beq  $t0, $zero, Exit  # If i >= N, branch to exit
+
+        andi $t1, $s1, 1       # $t1 = i & 1
+        bne  $t1, $zero, Else  # If (i & 1) != 0, goto Else
+
+        # If ((i & 0x1) == 0) block
+        add  $a0, $s0, $zero   # Prepare argument a = x
+        add  $a1, $s1, $zero   # Prepare argument b = i
+        jal  Func_f            # Call f(x,i)
+        add  $s0, $s0, $v0     # x += f(x,i)
+        
+        # NOTE: Implement 'print x' using your custom print instruction/syscall here
+        # E.g., print $s0 
+        
+        j    NextLoop
+
+Else:
+        add  $a0, $s0, $zero   # Prepare argument a = x
+        add  $a1, $s1, $zero   # Prepare argument b = i
+        jal  Func_f            # Call f(x,i)
+        sub  $s0, $s0, $v0     # x -= f(x,i)
+        
+        # NOTE: Implement 'print x' using your custom print instruction/syscall here
+        # E.g., print $s0
+
+NextLoop:
+        addi $s1, $s1, 1       # i++
+        j    Loop
+
+Exit:
+        # Implement 'exit()' instruction using custom syscall / trap
+        # E.g., exit
+
+# Function f(a,b)
+Func_f:
+        add  $v0, $a0, $a1     # return a + b (in $v0)
+        jr   $ra               # return to caller
